@@ -85,13 +85,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      - name: Deploy Databricks resources
+      - name: Deploy infrastructure job
         working-directory: ${{ github.workspace }}
-        run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+        run: databricks bundle deploy -t ${{ github.ref_name }} --select jobs.sepsis_infrastructure --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
 
       - name: Provision environment infrastructure
         working-directory: ${{ github.workspace }}
         run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_infrastructure
+
+      - name: Deploy Databricks resources
+        working-directory: ${{ github.workspace }}
+        run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
 
       - name: Run deployment evaluation
         working-directory: ${{ github.workspace }}
