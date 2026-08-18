@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {
+        "id": "11111111111111111111111111111111",
+        "question": [
+          "Show me a dummy Sepsis clinical query"
+        ]
+      }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "identifier": "clinical_dev.sepsis.sepsis_certified_qa"
+      }
+    ]
+  }
+}

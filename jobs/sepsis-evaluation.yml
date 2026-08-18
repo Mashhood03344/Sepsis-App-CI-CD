@@ -1,0 +1,23 @@
+resources:
+
+  jobs:
+
+    sepsis_evaluation:
+
+      name: "[${bundle.target}] Sepsis Supervisor Evaluation"
+
+      tasks:
+
+        - task_key: evaluate_supervisor
+
+          notebook_task:
+            notebook_path: ../notebooks/evaluation.py
+
+          environment_key: default
+
+      environments:
+
+        - environment_key: default
+
+          spec:
+            environment_version: "4"

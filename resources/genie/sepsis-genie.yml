@@ -1,0 +1,15 @@
+resources:
+
+  genie_spaces:
+
+    sepsis_genie:
+
+      title: "Sepsis Genie"
+
+      description: >
+        Dummy Genie Agent used to validate deployment of the
+        Sepsis Supervisor architecture.
+
+      warehouse_id: ${var.warehouse_id}
+
+      file_path: ./sepsis.geniespace.json
