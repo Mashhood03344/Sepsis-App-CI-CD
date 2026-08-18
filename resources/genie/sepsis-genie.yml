@@ -12,4 +12,4 @@ resources:
 
       warehouse_id: ${var.warehouse_id}
 
-      file_path: ./sepsis.geniespace.json
+      file_path: ${var.genie_space_file}
