@@ -9,8 +9,8 @@ Pull requests run Python tests and bundle validation. A push to either environme
 
 - Variable: `DATABRICKS_HOST`
 - Variable: `DATABRICKS_WAREHOUSE_ID`
-- Secret: `DATABRICKS_AZURE_CLIENT_ID`
-- Secret: `DATABRICKS_AZURE_CLIENT_SECRET`
+- Secret: `DATABRICKS_CLIENT_ID`
+- Secret: `DATABRICKS_CLIENT_SECRET`
 - Secret: `DATABRICKS_AZURE_TENANT_ID`
 
 The service principal needs permission to deploy bundles, create or update the Databricks App, run jobs, and manage the vector search and Genie resources in the target workspace.

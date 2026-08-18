@@ -17,7 +17,9 @@ jobs:
     environment: ${{ github.base_ref || github.ref_name }}
     env:
       BUNDLE_TARGET: ${{ github.base_ref || github.ref_name }}
-      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
     steps:
       - name: Check out repository
@@ -37,7 +39,7 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
 
-      - name: Validate dev bundle configuration
+      - name: Validate target bundle configuration
         run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
   deploy:
@@ -47,11 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name }}
     env:
-      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-      DATABRICKS_AUTH_TYPE: azure-client-secret
-      DATABRICKS_AZURE_CLIENT_ID: ${{ secrets.DATABRICKS_AZURE_CLIENT_ID }}
-      DATABRICKS_AZURE_CLIENT_SECRET: ${{ secrets.DATABRICKS_AZURE_CLIENT_SECRET }}
-      DATABRICKS_AZURE_TENANT_ID: ${{ secrets.DATABRICKS_AZURE_TENANT_ID }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
     steps:
       - name: Check out repository
