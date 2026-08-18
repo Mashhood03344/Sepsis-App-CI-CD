@@ -5,6 +5,12 @@ on:
     branches: [dev, qa]
   push:
     branches: [dev, qa]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type DESTROY_DEV to remove the dev bundle resources
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -90,3 +96,35 @@ jobs:
       - name: Run deployment evaluation
         working-directory: ${{ github.workspace }}
         run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
+
+  destroy-dev:
+    name: Destroy dev environment
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'DESTROY_DEV'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
+      - name: Validate dev bundle
+        working-directory: ${{ github.workspace }}
+        run: databricks bundle validate -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+
+      - name: Destroy dev bundle resources
+        working-directory: ${{ github.workspace }}
+        run: databricks bundle destroy -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
