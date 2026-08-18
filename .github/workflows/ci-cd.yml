@@ -85,13 +85,28 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      - name: Deploy infrastructure job
+      - name: Bootstrap certified Q&A table
         working-directory: ${{ github.workspace }}
-        run: databricks bundle deploy -t ${{ github.ref_name }} --select jobs.sepsis_infrastructure --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
+        run: |
+          if [ "${{ github.ref_name }}" = "dev" ]; then
+            CATALOG="clinical_dev"
+          else
+            CATALOG="clinical_qa"
+          fi
 
-      - name: Provision environment infrastructure
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_infrastructure
+          SQL="CREATE TABLE IF NOT EXISTS \`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\` (id STRING, question STRING, approved_answer STRING) USING DELTA"
+          PAYLOAD=$(jq -n \
+            --arg statement "$SQL" \
+            --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
+            '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
+
+          RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
+          echo "$RESULT" | jq .
+          STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
+
+          if [ "$STATE" != "SUCCEEDED" ]; then
+            exit 1
+          fi
 
       - name: Deploy Databricks resources
         working-directory: ${{ github.workspace }}
