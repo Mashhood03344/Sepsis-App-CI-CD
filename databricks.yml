@@ -38,7 +38,7 @@ targets:
       schema: sepsis
       warehouse_id: ${var.warehouse_id}
       app_name: stable-gated-sepsis-agent-dev
-      genie_space_file: ./sepsis.geniespace.dev.json
+      genie_space_file: resources/genie/sepsis.geniespace.json
 
   qa:
     mode: production
@@ -51,4 +51,4 @@ targets:
       schema: sepsis
       warehouse_id: ${var.warehouse_id}
       app_name: stable-gated-sepsis-agent-qa
-      genie_space_file: ./sepsis.geniespace.qa.json
+      genie_space_file: resources/genie/sepsis.geniespace.qa.json
