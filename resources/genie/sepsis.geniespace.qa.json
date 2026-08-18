@@ -13,7 +13,7 @@
   "data_sources": {
     "tables": [
       {
-          "identifier": "clinical_dev.sepsis.sepsis_certified_qa"
+        "identifier": "clinical_qa.sepsis.sepsis_certified_qa"
       }
     ]
   }

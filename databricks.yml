@@ -21,6 +21,9 @@ variables:
   app_name:
     description: Sepsis Databricks App name
 
+  genie_space_file:
+    description: Environment-specific Genie space definition
+
 targets:
 
   dev:
@@ -35,6 +38,7 @@ targets:
       schema: sepsis
       warehouse_id: ${var.warehouse_id}
       app_name: stable-gated-sepsis-agent-dev
+      genie_space_file: ./sepsis.geniespace.json
 
   qa:
     mode: production
@@ -47,3 +51,4 @@ targets:
       schema: sepsis
       warehouse_id: ${var.warehouse_id}
       app_name: stable-gated-sepsis-agent-qa
+      genie_space_file: ./sepsis.geniespace.qa.json
