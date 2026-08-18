@@ -21,6 +21,7 @@ jobs:
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -39,7 +40,14 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
 
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
       - name: Validate target bundle configuration
+        working-directory: ${{ github.workspace }}
         run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
   deploy:
@@ -53,6 +61,7 @@ jobs:
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -60,14 +69,24 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
 
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
       - name: Validate target bundle
+        working-directory: ${{ github.workspace }}
         run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
       - name: Deploy Databricks resources
+        working-directory: ${{ github.workspace }}
         run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
       - name: Provision environment infrastructure
+        working-directory: ${{ github.workspace }}
         run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_infrastructure
 
       - name: Run deployment evaluation
+        working-directory: ${{ github.workspace }}
         run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
