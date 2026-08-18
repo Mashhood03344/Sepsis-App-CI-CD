@@ -15,6 +15,7 @@ spark.sql(
         approved_answer STRING
     )
     USING DELTA
+    TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')
     """
 )
 

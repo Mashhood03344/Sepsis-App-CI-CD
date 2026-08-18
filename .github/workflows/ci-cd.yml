@@ -94,19 +94,25 @@ jobs:
             CATALOG="clinical_qa"
           fi
 
-          SQL="CREATE TABLE IF NOT EXISTS \`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\` (id STRING, question STRING, approved_answer STRING) USING DELTA"
-          PAYLOAD=$(jq -n \
-            --arg statement "$SQL" \
-            --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
-            '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
+          execute_sql() {
+            SQL="$1"
+            PAYLOAD=$(jq -n \
+              --arg statement "$SQL" \
+              --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
+              '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
 
-          RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
-          echo "$RESULT" | jq .
-          STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
+            RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
+            echo "$RESULT" | jq .
+            STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
 
-          if [ "$STATE" != "SUCCEEDED" ]; then
-            exit 1
-          fi
+            if [ "$STATE" != "SUCCEEDED" ]; then
+              exit 1
+            fi
+          }
+
+          TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
+          execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+          execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
 
       - name: Deploy Databricks resources
         working-directory: ${{ github.workspace }}
