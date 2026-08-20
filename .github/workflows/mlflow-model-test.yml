@@ -49,9 +49,7 @@ jobs:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          MLFLOW_EXPERIMENT_NAME: /Shared/sepsis-supervisor-mlflow-poc
         run: |
-          set -x
           python -u model/log_model.py
 
       - name: Register MLflow model in Unity Catalog
