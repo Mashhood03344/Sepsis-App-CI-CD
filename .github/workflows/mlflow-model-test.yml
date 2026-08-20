@@ -37,3 +37,7 @@ jobs:
       - name: Validate MLflow model import
         run: |
           python -c "from src.sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
+
+      - name: Log MLflow model
+        run: |
+          python model/log_model.py
