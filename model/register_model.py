@@ -12,6 +12,10 @@ def main():
     print(f"Registering model URI: {args.model_uri}")
     print(f"Target UC model: {args.model_name}")
 
+    # The logged model lives in Databricks MLflow tracking.
+    mlflow.set_tracking_uri("databricks")
+
+    # The registered model lives in Unity Catalog.
     mlflow.set_registry_uri("databricks-uc")
 
     model_version = mlflow.register_model(
