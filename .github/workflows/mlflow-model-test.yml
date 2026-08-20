@@ -46,6 +46,9 @@ jobs:
         id: log-model
         env:
           PYTHONPATH: ${{ github.workspace }}/src
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           set -x
           python -u model/log_model.py

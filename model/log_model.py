@@ -1,10 +1,12 @@
-import mlflow
-
 import os
+
+import mlflow
 
 
 def main():
     print("Starting MLflow model logging")
+
+    mlflow.set_tracking_uri("databricks")
 
     input_example = [
         {
@@ -41,7 +43,7 @@ def main():
 
     print("MLflow model inference validation successful")
 
-    
+
 
     github_output = os.getenv("GITHUB_OUTPUT")
 
