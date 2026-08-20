@@ -12,6 +12,8 @@ jobs:
   test-model:
     runs-on: ubuntu-latest
 
+    environment: dev
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
