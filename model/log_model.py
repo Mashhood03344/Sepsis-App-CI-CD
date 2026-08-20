@@ -1,5 +1,4 @@
 import mlflow
-from mlflow.models import infer_signature
 
 
 def main():
@@ -11,25 +10,11 @@ def main():
         }
     ]
 
-    expected_output = [
-        {
-            "route": "CERTIFIED_QA",
-            "confidence": 0.95,
-            "answer": "Dummy certified Sepsis answer."
-        }
-    ]
-
-    signature = infer_signature(
-        input_example,
-        expected_output,
-    )
-
     model_info = mlflow.pyfunc.log_model(
         name="sepsis_supervisor",
         python_model="src/sepsis/supervisor_model.py",
         code_paths=["src"],
         input_example=input_example,
-        signature=signature,
     )
 
     print(f"Model URI: {model_info.model_uri}")
