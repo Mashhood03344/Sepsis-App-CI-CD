@@ -1,31 +1,24 @@
-import mlflow
-from mlflow.models import set_model
+def classify_question(question: str):
+    """
+    Dummy replacement for Gated_QA_Sepsis_Supervisor_Agent.
 
-from src.sepsis.supervisor import classify_question
+    Production implementation should:
+      1. query certified Q&A vector index
+      2. apply match threshold
+      3. execute certified SQL when matched
+      4. otherwise delegate to Genie
+      5. gate unsafe responses
+    """
 
+    if "certified" in question.lower():
+        return {
+            "route": "CERTIFIED_QA",
+            "confidence": 0.95,
+            "answer": "Dummy certified Sepsis answer."
+        }
 
-class SepsisSupervisorModel(mlflow.pyfunc.PythonModel):
-    """MLflow wrapper around the Sepsis Supervisor routing logic."""
-
-    def predict(
-        self,
-        context,
-        model_input: list[dict[str, str]],
-        params=None,
-    ):
-        results = []
-
-        for request in model_input:
-            question = request.get("question")
-
-            if not question:
-                raise ValueError(
-                    "Each request must contain a non-empty 'question'."
-                )
-
-            results.append(classify_question(question))
-
-        return results
-
-
-set_model(SepsisSupervisorModel())
+    return {
+        "route": "GENIE",
+        "confidence": 0.50,
+        "answer": "Dummy Genie fallback answer."
+    }

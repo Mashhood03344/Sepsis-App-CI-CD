@@ -1,5 +1,3 @@
-from typing import Any
-
 import mlflow
 from mlflow.models import set_model
 
@@ -12,16 +10,18 @@ class SepsisSupervisorModel(mlflow.pyfunc.PythonModel):
     def predict(
         self,
         context,
-        model_input: list[dict[str, Any]],
+        model_input: list[dict[str, str]],
         params=None,
-    ) -> list[dict[str, Any]]:
+    ):
         results = []
 
         for request in model_input:
             question = request.get("question")
 
             if not question:
-                raise ValueError("Each request must contain a non-empty 'question'.")
+                raise ValueError(
+                    "Each request must contain a non-empty 'question'."
+                )
 
             results.append(classify_question(question))
 
