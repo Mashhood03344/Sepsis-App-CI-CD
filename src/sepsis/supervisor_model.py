@@ -1,7 +1,7 @@
 import mlflow
 from mlflow.models import set_model
 
-from src.sepsis.supervisor import classify_question
+from sepsis.supervisor import classify_question
 
 
 class SepsisSupervisorModel(mlflow.pyfunc.PythonModel):

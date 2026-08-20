@@ -35,11 +35,14 @@ jobs:
           python -c "import mlflow; print(f'MLflow version: {mlflow.__version__}')"
 
       - name: Validate MLflow model import
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
-          python -c "from src.sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
-
+          python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
+      
       - name: Log MLflow model
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -x
           python -u model/log_model.py
-          echo "MLflow logging command completed"
