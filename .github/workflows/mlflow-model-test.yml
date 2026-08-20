@@ -1,0 +1,25 @@
+name: Sepsis MLflow Model Test
+
+on:
+  push:
+    branches:
+      - feature/mlflow-packaging
+
+permissions:
+  contents: read
+
+jobs:
+  test-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show Python version
+        run: python --version
