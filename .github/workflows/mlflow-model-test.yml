@@ -28,6 +28,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.10.0
 
       - name: Install model dependencies
         run: |

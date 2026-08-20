@@ -6,6 +6,7 @@ include:
   - resources/apps/*.yml
   - resources/vector-search/*.yml
   - resources/genie/*.yml
+  - resources/model-serving/*.yml
   - jobs/*.yml
 
 variables:

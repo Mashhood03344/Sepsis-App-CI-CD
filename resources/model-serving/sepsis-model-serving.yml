@@ -1,0 +1,12 @@
+resources:
+  model_serving_endpoints:
+    sepsis_supervisor_endpoint:
+      name: sepsis-supervisor-mlflow-poc-dev
+
+      config:
+        served_entities:
+          - name: sepsis-supervisor-v3
+            entity_name: clinical_dev.sepsis.sepsis_supervisor_mlflow_poc
+            entity_version: "3"
+            workload_size: Small
+            scale_to_zero_enabled: true
