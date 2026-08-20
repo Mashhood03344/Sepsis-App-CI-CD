@@ -1,5 +1,7 @@
 import mlflow
 
+import os
+
 
 def main():
     print("Starting MLflow model logging")
@@ -38,6 +40,16 @@ def main():
     assert genie_result[0]["route"] == "GENIE"
 
     print("MLflow model inference validation successful")
+
+    
+
+    github_output = os.getenv("GITHUB_OUTPUT")
+
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as output_file:
+            output_file.write(f"model_uri={model_info.model_uri}\n")
+
+    print(f"Model URI exported: {model_info.model_uri}")
 
 
 if __name__ == "__main__":

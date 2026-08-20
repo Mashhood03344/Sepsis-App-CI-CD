@@ -40,9 +40,20 @@ jobs:
         run: |
           python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
       
-      - name: Log MLflow model
+      - name: Log and validate MLflow model
+        id: log-model
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -x
           python -u model/log_model.py
+
+      - name: Register MLflow model in Unity Catalog
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          python -u model/register_model.py \
+            --model-uri "${{ steps.log-model.outputs.model_uri }}" \
+            --model-name "clinical_dev.sepsis.sepsis_supervisor_mlflow_poc"
