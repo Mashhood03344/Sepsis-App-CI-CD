@@ -40,4 +40,6 @@ jobs:
 
       - name: Log MLflow model
         run: |
-          python model/log_model.py
+          set -x
+          python -u model/log_model.py
+          echo "MLflow logging command completed"
