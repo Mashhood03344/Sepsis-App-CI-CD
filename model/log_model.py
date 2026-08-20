@@ -8,6 +8,8 @@ def main():
 
     mlflow.set_tracking_uri("databricks")
 
+    mlflow.set_experiment("/Shared/sepsis-supervisor-mlflow-poc")
+
     input_example = [
         {
             "question": "Show a certified sepsis answer"
