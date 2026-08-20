@@ -9,6 +9,12 @@ def main():
     parser.add_argument("--model-name", required=True)
     args = parser.parse_args()
 
+    if not args.model_uri:
+        raise ValueError(
+            "Model URI is empty. The MLflow logging step "
+            "did not export model_uri correctly."
+        )
+
     print(f"Registering model URI: {args.model_uri}")
     print(f"Target UC model: {args.model_name}")
 
