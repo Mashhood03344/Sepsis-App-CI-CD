@@ -89,3 +89,15 @@ jobs:
         run: |
           databricks bundle plan -t dev \
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+
+
+      - name: Deploy Databricks bundle
+        working-directory: ${{ github.workspace }}
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+        run: |
+          databricks bundle deploy -t dev \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
