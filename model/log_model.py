@@ -39,7 +39,7 @@ def main():
         model_info = mlflow.pyfunc.log_model(
             name="sepsis_supervisor",
             python_model="src/sepsis/supervisor_model.py",
-            code_paths=["src"],
+            code_paths=["src/sepsis"],
             input_example=input_example,
             conda_env=conda_env,
         )

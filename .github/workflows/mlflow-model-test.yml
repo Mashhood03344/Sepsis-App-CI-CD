@@ -82,16 +82,36 @@ jobs:
         run: |
           python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
       
-      - name: Log and validate MLflow model
+      - name: Validate packaged MLflow model
         if: steps.changes.outputs.model_changed == 'true'
-        id: log-model
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          MODEL_URI: ${{ steps.log-model.outputs.model_uri }}
         run: |
-          python -u model/log_model.py
+          env -u PYTHONPATH python - <<'PY'
+          import os
+          import mlflow
+
+          mlflow.set_tracking_uri("databricks")
+
+          model_uri = os.environ["MODEL_URI"]
+
+          print(f"Loading packaged model without repository PYTHONPATH: {model_uri}")
+
+          model = mlflow.pyfunc.load_model(model_uri)
+
+          result = model.predict([
+              {"question": "Show a certified sepsis answer"}
+          ])
+
+          print(f"Packaged model result: {result}")
+
+          assert result[0]["route"] == "CERTIFIED_QA"
+
+          print("Packaged MLflow model validation successful")
+          PY
 
       - name: Register MLflow model in Unity Catalog
         if: steps.changes.outputs.model_changed == 'true'
