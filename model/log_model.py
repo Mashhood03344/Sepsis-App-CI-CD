@@ -1,3 +1,5 @@
+# Validate that the packaged model can load without repository PYTHONPATH.
+
 import os
 
 import mlflow
