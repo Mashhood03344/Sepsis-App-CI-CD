@@ -82,6 +82,29 @@ jobs:
         run: |
           python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
       
+      - name: Log and validate MLflow model
+        if: steps.changes.outputs.model_changed == 'true'
+        id: log-model
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          python -u model/log_model.py
+
+      - name: Verify logged model URI
+        if: steps.changes.outputs.model_changed == 'true'
+        run: |
+          MODEL_URI="${{ steps.log-model.outputs.model_uri }}"
+
+          echo "Model URI from logging step: ${MODEL_URI}"
+
+          if [[ -z "${MODEL_URI}" ]]; then
+            echo "ERROR: log-model did not export model_uri"
+            exit 1
+          fi
+
       - name: Validate packaged MLflow model
         if: steps.changes.outputs.model_changed == 'true'
         env:
@@ -90,15 +113,23 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           MODEL_URI: ${{ steps.log-model.outputs.model_uri }}
         run: |
-          env -u PYTHONPATH python - <<'PY'
+          set -euo pipefail
+
+          if [[ -z "${MODEL_URI}" ]]; then
+            echo "ERROR: MODEL_URI is empty"
+            exit 1
+          fi
+
+          echo "Loading packaged model without repository PYTHONPATH: ${MODEL_URI}"
+
+          env -u PYTHONPATH MODEL_URI="${MODEL_URI}" python - <<'PY'
           import os
           import mlflow
 
           mlflow.set_tracking_uri("databricks")
 
           model_uri = os.environ["MODEL_URI"]
-
-          print(f"Loading packaged model without repository PYTHONPATH: {model_uri}")
+          print(f"Loading model: {model_uri}")
 
           model = mlflow.pyfunc.load_model(model_uri)
 
