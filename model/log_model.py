@@ -9,6 +9,20 @@ def main():
     mlflow.set_tracking_uri("databricks")
     mlflow.set_experiment("/Shared/sepsis-supervisor-mlflow-poc")
 
+    conda_env = {
+        "name": "mlflow-env",
+        "channels": ["conda-forge"],
+        "dependencies": [
+            "python=3.12",
+            "pip",
+            {
+                "pip": [
+                    "mlflow==3.12.0",
+                ]
+            },
+        ],
+    }
+
     input_example = [
         {
             "question": "Show a certified sepsis answer"
@@ -25,6 +39,7 @@ def main():
             python_model="src/sepsis/supervisor_model.py",
             code_paths=["src"],
             input_example=input_example,
+            conda_env=conda_env,
         )
 
         print(f"Model URI: {model_info.model_uri}")
