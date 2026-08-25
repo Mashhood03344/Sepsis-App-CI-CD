@@ -267,3 +267,110 @@ jobs:
           done
 
           wait "${DEPLOY_PID}"
+
+      - name: Smoke test model serving endpoint
+        if: >
+          steps.changes.outputs.deploy_requested == 'true' &&
+          contains(github.event.head_commit.message, '[deploy-serving]')
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
+        run: |
+          set -euo pipefail
+
+          echo "Testing CERTIFIED_QA route"
+
+          CERTIFIED_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show a certified sepsis answer"
+                  }
+                ]
+              }'
+          )"
+
+          echo "${CERTIFIED_RESPONSE}"
+
+          CERTIFIED_ROUTE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
+
+          CERTIFIED_CONFIDENCE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
+
+          CERTIFIED_ANSWER="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
+
+          if [[ "${CERTIFIED_ROUTE}" != "CERTIFIED_QA" ]]; then
+            echo "Expected CERTIFIED_QA but received ${CERTIFIED_ROUTE}"
+            exit 1
+          fi
+
+          if [[ -z "${CERTIFIED_CONFIDENCE}" || "${CERTIFIED_CONFIDENCE}" == "null" ]]; then
+            echo "Certified response is missing confidence"
+            exit 1
+          fi
+
+          if [[ -z "${CERTIFIED_ANSWER}" || "${CERTIFIED_ANSWER}" == "null" ]]; then
+            echo "Certified response is missing answer"
+            exit 1
+          fi
+
+          echo "CERTIFIED_QA route passed"
+
+          echo "Testing GENIE route"
+
+          GENIE_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show the latest sepsis trend"
+                  }
+                ]
+              }'
+          )"
+
+          echo "${GENIE_RESPONSE}"
+
+          GENIE_ROUTE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
+
+          GENIE_CONFIDENCE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
+
+          GENIE_ANSWER="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
+
+          if [[ "${GENIE_ROUTE}" != "GENIE" ]]; then
+            echo "Expected GENIE but received ${GENIE_ROUTE}"
+            exit 1
+          fi
+
+          if [[ -z "${GENIE_CONFIDENCE}" || "${GENIE_CONFIDENCE}" == "null" ]]; then
+            echo "GENIE response is missing confidence"
+            exit 1
+          fi
+
+          if [[ -z "${GENIE_ANSWER}" || "${GENIE_ANSWER}" == "null" ]]; then
+            echo "GENIE response is missing answer"
+            exit 1
+          fi
+
+          echo "GENIE route passed"
+          echo "Model serving smoke tests passed"
