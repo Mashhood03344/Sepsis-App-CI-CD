@@ -75,17 +75,6 @@ jobs:
           python -m pip show mlflow
           python -c "import mlflow; print(f'MLflow version: {mlflow.__version__}')"
 
-      - name: Check Shape of Endpoint get API
-        working-directory: ${{ github.workspace }}
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-        run: |
-          databricks serving-endpoints get \
-          dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev \
-          --output json
-
       - name: Validate MLflow model import
         if: steps.changes.outputs.model_changed == 'true'
         env:
