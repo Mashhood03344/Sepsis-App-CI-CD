@@ -23,6 +23,8 @@ def main():
         ],
     }
 
+    print(f"MLflow serving environment: {conda_env}")
+
     input_example = [
         {
             "question": "Show a certified sepsis answer"
