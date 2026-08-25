@@ -5,8 +5,8 @@ resources:
 
       config:
         served_entities:
-          - name: sepsis-supervisor-v3
+          - name: sepsis-supervisor-v9
             entity_name: clinical_dev.sepsis.sepsis_supervisor_mlflow_poc
-            entity_version: "3"
+            entity_version: "9"
             workload_size: Small
             scale_to_zero_enabled: true
