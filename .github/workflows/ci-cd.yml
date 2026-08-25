@@ -45,6 +45,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
 
       - name: Verify Databricks bundle file
         working-directory: ${{ github.workspace }}
@@ -74,6 +76,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
 
       - name: Verify Databricks bundle file
         working-directory: ${{ github.workspace }}
@@ -139,6 +143,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
 
       - name: Verify Databricks bundle file
         working-directory: ${{ github.workspace }}

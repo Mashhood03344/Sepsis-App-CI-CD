@@ -17,6 +17,40 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: changes
+        shell: bash
+        run: |
+          echo "Head commit message:"
+          echo '${{ github.event.head_commit.message }}'
+
+          git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed_files.txt
+
+          echo "Changed files:"
+          cat changed_files.txt
+
+          if grep -Eq '^(model/|src/sepsis/)' changed_files.txt; then
+            echo "model_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "model_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(resources/model-serving/|databricks.yml)' changed_files.txt; then
+            echo "bundle_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bundle_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${{ github.event.head_commit.message }}" == *"[deploy-serving]"* ]]; then
+            echo "deploy_requested=true" >> "$GITHUB_OUTPUT"
+            echo "Deployment requested"
+          else
+            echo "deploy_requested=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment not requested"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,7 +63,7 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
         with:
-          version: 1.10.0
+          version: 1.11.0
 
       - name: Install model dependencies
         run: |
@@ -41,13 +75,26 @@ jobs:
           python -m pip show mlflow
           python -c "import mlflow; print(f'MLflow version: {mlflow.__version__}')"
 
+      - name: Check Shape of Endpoint get API
+        working-directory: ${{ github.workspace }}
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          databricks serving-endpoints get \
+          dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev \
+          --output json
+
       - name: Validate MLflow model import
+        if: steps.changes.outputs.model_changed == 'true'
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
           python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
       
       - name: Log and validate MLflow model
+        if: steps.changes.outputs.model_changed == 'true'
         id: log-model
         env:
           PYTHONPATH: ${{ github.workspace }}/src
@@ -58,6 +105,7 @@ jobs:
           python -u model/log_model.py
 
       - name: Register MLflow model in Unity Catalog
+        if: steps.changes.outputs.model_changed == 'true'
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
@@ -68,6 +116,7 @@ jobs:
             --model-name "clinical_dev.sepsis.sepsis_supervisor_mlflow_poc"
 
       - name: Validate Databricks bundle
+        if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -80,6 +129,7 @@ jobs:
 
       
       - name: Plan Databricks bundle deployment
+        if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -90,8 +140,10 @@ jobs:
           databricks bundle plan -t dev \
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-
       - name: Deploy Databricks bundle
+        if: >
+          steps.changes.outputs.deploy_requested == 'true' &&
+          contains(github.event.head_commit.message, '[deploy-serving]')
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
