@@ -150,6 +150,80 @@ jobs:
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
         run: |
+          set -euo pipefail
+
           databricks bundle deploy -t dev \
-            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" &
+
+          DEPLOY_PID=$!
+
+          echo "Bundle deploy started with PID ${DEPLOY_PID}"
+
+          UPDATE_STARTED=false
+
+          while kill -0 "${DEPLOY_PID}" 2>/dev/null; do
+
+            ENDPOINT_JSON="$(
+              databricks serving-endpoints get "${ENDPOINT_NAME}" \
+                --output json 2>/dev/null || true
+            )"
+
+            if [[ -z "${ENDPOINT_JSON}" ]]; then
+              echo "Endpoint state is not available yet."
+              sleep 30
+              continue
+            fi
+
+            CONFIG_UPDATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.config_update // "UNKNOWN"'
+            )"
+
+            READY_STATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.ready // "UNKNOWN"'
+            )"
+
+            ENTITY_DEPLOYMENT="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment // "UNKNOWN"'
+            )"
+
+            ENTITY_MESSAGE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment_state_message // ""'
+            )"
+
+            echo "Endpoint state:"
+            echo "  config_update=${CONFIG_UPDATE}"
+            echo "  ready=${READY_STATE}"
+            echo "  entity_deployment=${ENTITY_DEPLOYMENT}"
+
+            # Ignore the endpoint's previous failed state until
+            # Databricks confirms that this deployment has started.
+            if [[ "${CONFIG_UPDATE}" == "IN_PROGRESS" ]]; then
+              UPDATE_STARTED=true
+              echo "New endpoint update detected."
+            fi
+
+            # Only treat UPDATE_FAILED as belonging to this deployment
+            # after we have observed IN_PROGRESS.
+            if [[ "${UPDATE_STARTED}" == "true" ]] && \
+               { [[ "${CONFIG_UPDATE}" == "UPDATE_FAILED" ]] || \
+                 [[ "${ENTITY_DEPLOYMENT}" == "DEPLOYMENT_FAILED" ]]; }; then
+
+              echo "Model Serving deployment failed."
+              echo "Failure reason: ${ENTITY_MESSAGE}"
+
+              kill "${DEPLOY_PID}" 2>/dev/null || true
+              wait "${DEPLOY_PID}" 2>/dev/null || true
+
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          wait "${DEPLOY_PID}"
