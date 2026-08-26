@@ -1,5 +1,7 @@
 # Validate that the packaged model can load without repository PYTHONPATH.
 
+# This script logs the model to MLflow, loads it back, and runs inference to validate that the model is working as expected.
+
 import os
 
 import mlflow
