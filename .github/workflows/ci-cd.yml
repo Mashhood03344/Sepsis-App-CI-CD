@@ -98,8 +98,6 @@ jobs:
       - name: Install application and model dependencies
         run: |
           python -m pip install --upgrade pip && pip install -r apps/sepsis-supervisor/requirements.txt
-          python -m pip install --upgrade pip
-          python -m pip install -r model/requirements.txt
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
@@ -302,206 +300,206 @@ jobs:
       #     execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
       #     execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
 
-      # - name: Deploy Databricks bundle
-      #   if: >
-      #     needs.validate.outputs.deploy_requested == 'true' &&
-      #     contains(github.event.head_commit.message, '[deploy-serving]')
-      #   working-directory: ${{ github.workspace }}
-      #   env:
-      #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      #     DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      #     DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      #     DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-      #     ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
-      #   run: |
-      #     set -euo pipefail
+      - name: Deploy Databricks bundle
+        if: >
+          needs.validate.outputs.deploy_requested == 'true' &&
+          contains(github.event.head_commit.message, '[deploy-serving]')
+        working-directory: ${{ github.workspace }}
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
+        run: |
+          set -euo pipefail
 
-      #     databricks bundle deploy -t dev \
-      #       --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" &
+          databricks bundle deploy -t dev \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" &
 
-      #     DEPLOY_PID=$!
+          DEPLOY_PID=$!
 
-      #     echo "Bundle deploy started with PID ${DEPLOY_PID}"
+          echo "Bundle deploy started with PID ${DEPLOY_PID}"
 
-      #     UPDATE_STARTED=false
+          UPDATE_STARTED=false
 
-      #     while kill -0 "${DEPLOY_PID}" 2>/dev/null; do
+          while kill -0 "${DEPLOY_PID}" 2>/dev/null; do
 
-      #       ENDPOINT_JSON="$(
-      #         databricks serving-endpoints get "${ENDPOINT_NAME}" \
-      #           --output json 2>/dev/null || true
-      #       )"
+            ENDPOINT_JSON="$(
+              databricks serving-endpoints get "${ENDPOINT_NAME}" \
+                --output json 2>/dev/null || true
+            )"
 
-      #       if [[ -z "${ENDPOINT_JSON}" ]]; then
-      #         echo "Endpoint state is not available yet."
-      #         sleep 30
-      #         continue
-      #       fi
+            if [[ -z "${ENDPOINT_JSON}" ]]; then
+              echo "Endpoint state is not available yet."
+              sleep 30
+              continue
+            fi
 
-      #       CONFIG_UPDATE="$(
-      #         echo "${ENDPOINT_JSON}" |
-      #         jq -r '.state.config_update // "UNKNOWN"'
-      #       )"
+            CONFIG_UPDATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.config_update // "UNKNOWN"'
+            )"
 
-      #       READY_STATE="$(
-      #         echo "${ENDPOINT_JSON}" |
-      #         jq -r '.state.ready // "UNKNOWN"'
-      #       )"
+            READY_STATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.ready // "UNKNOWN"'
+            )"
 
-      #       ENTITY_DEPLOYMENT="$(
-      #         echo "${ENDPOINT_JSON}" |
-      #         jq -r '.pending_config.served_entities[0].state.deployment // "UNKNOWN"'
-      #       )"
+            ENTITY_DEPLOYMENT="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment // "UNKNOWN"'
+            )"
 
-      #       ENTITY_MESSAGE="$(
-      #         echo "${ENDPOINT_JSON}" |
-      #         jq -r '.pending_config.served_entities[0].state.deployment_state_message // ""'
-      #       )"
+            ENTITY_MESSAGE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment_state_message // ""'
+            )"
 
-      #       echo "Endpoint state:"
-      #       echo "  config_update=${CONFIG_UPDATE}"
-      #       echo "  ready=${READY_STATE}"
-      #       echo "  entity_deployment=${ENTITY_DEPLOYMENT}"
+            echo "Endpoint state:"
+            echo "  config_update=${CONFIG_UPDATE}"
+            echo "  ready=${READY_STATE}"
+            echo "  entity_deployment=${ENTITY_DEPLOYMENT}"
 
-      #       # Ignore the endpoint's previous failed state until
-      #       # Databricks confirms that this deployment has started.
-      #       if [[ "${CONFIG_UPDATE}" == "IN_PROGRESS" ]]; then
-      #         UPDATE_STARTED=true
-      #         echo "New endpoint update detected."
-      #       fi
+            # Ignore the endpoint's previous failed state until
+            # Databricks confirms that this deployment has started.
+            if [[ "${CONFIG_UPDATE}" == "IN_PROGRESS" ]]; then
+              UPDATE_STARTED=true
+              echo "New endpoint update detected."
+            fi
 
-      #       # Only treat UPDATE_FAILED as belonging to this deployment
-      #       # after we have observed IN_PROGRESS.
-      #       if [[ "${UPDATE_STARTED}" == "true" ]] && \
-      #          { [[ "${CONFIG_UPDATE}" == "UPDATE_FAILED" ]] || \
-      #            [[ "${ENTITY_DEPLOYMENT}" == "DEPLOYMENT_FAILED" ]]; }; then
+            # Only treat UPDATE_FAILED as belonging to this deployment
+            # after we have observed IN_PROGRESS.
+            if [[ "${UPDATE_STARTED}" == "true" ]] && \
+               { [[ "${CONFIG_UPDATE}" == "UPDATE_FAILED" ]] || \
+                 [[ "${ENTITY_DEPLOYMENT}" == "DEPLOYMENT_FAILED" ]]; }; then
 
-      #         echo "Model Serving deployment failed."
-      #         echo "Failure reason: ${ENTITY_MESSAGE}"
+              echo "Model Serving deployment failed."
+              echo "Failure reason: ${ENTITY_MESSAGE}"
 
-      #         kill "${DEPLOY_PID}" 2>/dev/null || true
-      #         wait "${DEPLOY_PID}" 2>/dev/null || true
+              kill "${DEPLOY_PID}" 2>/dev/null || true
+              wait "${DEPLOY_PID}" 2>/dev/null || true
 
-      #         exit 1
-      #       fi
+              exit 1
+            fi
 
-      #       sleep 30
-      #     done
+            sleep 30
+          done
 
-      #     wait "${DEPLOY_PID}"
+          wait "${DEPLOY_PID}"
 
-      # - name: Run deployment evaluation
-      #   working-directory: ${{ github.workspace }}
-      #   run: |
-      #     # databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
-      #     databricks bundle run -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
+      - name: Run deployment evaluation
+        working-directory: ${{ github.workspace }}
+        run: |
+          # databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
+          databricks bundle run -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
 
-      # - name: Smoke test model serving endpoint
-      #   if: >
-      #     needs.validate.outputs.deploy_requested == 'true' &&
-      #     contains(github.event.head_commit.message, '[deploy-serving]')
-      #   env:
-      #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      #     DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      #     DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      #     ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
-      #   run: |
-      #     set -euo pipefail
+      - name: Smoke test model serving endpoint
+        if: >
+          needs.validate.outputs.deploy_requested == 'true' &&
+          contains(github.event.head_commit.message, '[deploy-serving]')
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
+        run: |
+          set -euo pipefail
 
-      #     echo "Testing CERTIFIED_QA route"
+          echo "Testing CERTIFIED_QA route"
 
-      #     CERTIFIED_RESPONSE="$(
-      #       databricks serving-endpoints query "${ENDPOINT_NAME}" \
-      #         --json '{
-      #           "inputs": [
-      #             {
-      #               "question": "Show a certified sepsis answer"
-      #             }
-      #           ]
-      #         }'
-      #     )"
+          CERTIFIED_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show a certified sepsis answer"
+                  }
+                ]
+              }'
+          )"
 
-      #     echo "${CERTIFIED_RESPONSE}"
+          echo "${CERTIFIED_RESPONSE}"
 
-      #     CERTIFIED_ROUTE="$(
-      #       echo "${CERTIFIED_RESPONSE}" |
-      #       jq -r '.predictions[0].route'
-      #     )"
+          CERTIFIED_ROUTE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
 
-      #     CERTIFIED_CONFIDENCE="$(
-      #       echo "${CERTIFIED_RESPONSE}" |
-      #       jq -r '.predictions[0].confidence'
-      #     )"
+          CERTIFIED_CONFIDENCE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
 
-      #     CERTIFIED_ANSWER="$(
-      #       echo "${CERTIFIED_RESPONSE}" |
-      #       jq -r '.predictions[0].answer'
-      #     )"
+          CERTIFIED_ANSWER="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
 
-      #     if [[ "${CERTIFIED_ROUTE}" != "CERTIFIED_QA" ]]; then
-      #       echo "Expected CERTIFIED_QA but received ${CERTIFIED_ROUTE}"
-      #       exit 1
-      #     fi
+          if [[ "${CERTIFIED_ROUTE}" != "CERTIFIED_QA" ]]; then
+            echo "Expected CERTIFIED_QA but received ${CERTIFIED_ROUTE}"
+            exit 1
+          fi
 
-      #     if [[ -z "${CERTIFIED_CONFIDENCE}" || "${CERTIFIED_CONFIDENCE}" == "null" ]]; then
-      #       echo "Certified response is missing confidence"
-      #       exit 1
-      #     fi
+          if [[ -z "${CERTIFIED_CONFIDENCE}" || "${CERTIFIED_CONFIDENCE}" == "null" ]]; then
+            echo "Certified response is missing confidence"
+            exit 1
+          fi
 
-      #     if [[ -z "${CERTIFIED_ANSWER}" || "${CERTIFIED_ANSWER}" == "null" ]]; then
-      #       echo "Certified response is missing answer"
-      #       exit 1
-      #     fi
+          if [[ -z "${CERTIFIED_ANSWER}" || "${CERTIFIED_ANSWER}" == "null" ]]; then
+            echo "Certified response is missing answer"
+            exit 1
+          fi
 
-      #     echo "CERTIFIED_QA route passed"
+          echo "CERTIFIED_QA route passed"
 
-      #     echo "Testing GENIE route"
+          echo "Testing GENIE route"
 
-      #     GENIE_RESPONSE="$(
-      #       databricks serving-endpoints query "${ENDPOINT_NAME}" \
-      #         --json '{
-      #           "inputs": [
-      #             {
-      #               "question": "Show the latest sepsis trend"
-      #             }
-      #           ]
-      #         }'
-      #     )"
+          GENIE_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show the latest sepsis trend"
+                  }
+                ]
+              }'
+          )"
 
-      #     echo "${GENIE_RESPONSE}"
+          echo "${GENIE_RESPONSE}"
 
-      #     GENIE_ROUTE="$(
-      #       echo "${GENIE_RESPONSE}" |
-      #       jq -r '.predictions[0].route'
-      #     )"
+          GENIE_ROUTE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
 
-      #     GENIE_CONFIDENCE="$(
-      #       echo "${GENIE_RESPONSE}" |
-      #       jq -r '.predictions[0].confidence'
-      #     )"
+          GENIE_CONFIDENCE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
 
-      #     GENIE_ANSWER="$(
-      #       echo "${GENIE_RESPONSE}" |
-      #       jq -r '.predictions[0].answer'
-      #     )"
+          GENIE_ANSWER="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
 
-      #     if [[ "${GENIE_ROUTE}" != "GENIE" ]]; then
-      #       echo "Expected GENIE but received ${GENIE_ROUTE}"
-      #       exit 1
-      #     fi
+          if [[ "${GENIE_ROUTE}" != "GENIE" ]]; then
+            echo "Expected GENIE but received ${GENIE_ROUTE}"
+            exit 1
+          fi
 
-      #     if [[ -z "${GENIE_CONFIDENCE}" || "${GENIE_CONFIDENCE}" == "null" ]]; then
-      #       echo "GENIE response is missing confidence"
-      #       exit 1
-      #     fi
+          if [[ -z "${GENIE_CONFIDENCE}" || "${GENIE_CONFIDENCE}" == "null" ]]; then
+            echo "GENIE response is missing confidence"
+            exit 1
+          fi
 
-      #     if [[ -z "${GENIE_ANSWER}" || "${GENIE_ANSWER}" == "null" ]]; then
-      #       echo "GENIE response is missing answer"
-      #       exit 1
-      #     fi
+          if [[ -z "${GENIE_ANSWER}" || "${GENIE_ANSWER}" == "null" ]]; then
+            echo "GENIE response is missing answer"
+            exit 1
+          fi
 
-      #     echo "GENIE route passed"
-          # echo "Model serving smoke tests passed"
+          echo "GENIE route passed"
+          echo "Model serving smoke tests passed"
 
   destroy-dev:
     name: Destroy dev environment
