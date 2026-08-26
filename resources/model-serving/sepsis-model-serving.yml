@@ -1,3 +1,5 @@
+# This file is used to configure the model serving endpoints for the sepsis model.
+
 resources:
   model_serving_endpoints:
     sepsis_supervisor_endpoint:
