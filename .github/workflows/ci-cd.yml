@@ -54,108 +54,112 @@ jobs:
           test -f databricks.yml
           echo "Bundle file found: $PWD/databricks.yml"
 
+      - name: Plan target bundle deployment
+        working-directory: ${{ github.workspace }}
+        run: databricks bundle plan -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+
       - name: Validate target bundle configuration
         working-directory: ${{ github.workspace }}
         run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-  deploy:
-    name: Deploy ${{ github.ref_name }} environment
-    if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'qa')
-    needs: validate
-    runs-on: ubuntu-latest
-    environment: ${{ github.ref_name }}
-    env:
-      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+  # deploy:
+  #   name: Deploy ${{ github.ref_name }} environment
+  #   if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'qa')
+  #   needs: validate
+  #   runs-on: ubuntu-latest
+  #   environment: ${{ github.ref_name }}
+  #   env:
+  #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #     DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+  #     DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+  #     DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+  #     DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v4
 
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@main
-        with:
-          version: 1.11.0
+  #     - name: Install Databricks CLI
+  #       uses: databricks/setup-cli@main
+  #       with:
+  #         version: 1.11.0
 
-      - name: Verify Databricks bundle file
-        working-directory: ${{ github.workspace }}
-        run: |
-          test -f databricks.yml
-          echo "Bundle file found: $PWD/databricks.yml"
+  #     - name: Verify Databricks bundle file
+  #       working-directory: ${{ github.workspace }}
+  #       run: |
+  #         test -f databricks.yml
+  #         echo "Bundle file found: $PWD/databricks.yml"
 
-      - name: Validate target bundle
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+  #     - name: Validate target bundle
+  #       working-directory: ${{ github.workspace }}
+  #       run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      - name: Bootstrap certified Q&A table
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ "${{ github.ref_name }}" = "dev" ]; then
-            CATALOG="clinical_dev"
-          else
-            CATALOG="clinical_qa"
-          fi
+  #     - name: Bootstrap certified Q&A table
+  #       working-directory: ${{ github.workspace }}
+  #       run: |
+  #         if [ "${{ github.ref_name }}" = "dev" ]; then
+  #           CATALOG="clinical_dev"
+  #         else
+  #           CATALOG="clinical_qa"
+  #         fi
 
-          execute_sql() {
-            SQL="$1"
-            PAYLOAD=$(jq -n \
-              --arg statement "$SQL" \
-              --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
-              '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
+  #         execute_sql() {
+  #           SQL="$1"
+  #           PAYLOAD=$(jq -n \
+  #             --arg statement "$SQL" \
+  #             --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
+  #             '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
 
-            RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
-            echo "$RESULT" | jq .
-            STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
+  #           RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
+  #           echo "$RESULT" | jq .
+  #           STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
 
-            if [ "$STATE" != "SUCCEEDED" ]; then
-              exit 1
-            fi
-          }
+  #           if [ "$STATE" != "SUCCEEDED" ]; then
+  #             exit 1
+  #           fi
+  #         }
 
-          TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
-          execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
-          execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+  #         TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
+  #         execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+  #         execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
 
-      - name: Deploy Databricks resources
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
+  #     - name: Deploy Databricks resources
+  #       working-directory: ${{ github.workspace }}
+  #       run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
 
-      - name: Run deployment evaluation
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
+  #     - name: Run deployment evaluation
+  #       working-directory: ${{ github.workspace }}
+  #       run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
 
-  destroy-dev:
-    name: Destroy dev environment
-    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'DESTROY_DEV'
-    runs-on: ubuntu-latest
-    environment: dev
-    env:
-      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+  # destroy-dev:
+  #   name: Destroy dev environment
+  #   if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'DESTROY_DEV'
+  #   runs-on: ubuntu-latest
+  #   environment: dev
+  #   env:
+  #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #     DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+  #     DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+  #     DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+  #     DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v4
 
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@main
-        with:
-          version: 1.11.0
+  #     - name: Install Databricks CLI
+  #       uses: databricks/setup-cli@main
+  #       with:
+  #         version: 1.11.0
 
-      - name: Verify Databricks bundle file
-        working-directory: ${{ github.workspace }}
-        run: |
-          test -f databricks.yml
-          echo "Bundle file found: $PWD/databricks.yml"
+  #     - name: Verify Databricks bundle file
+  #       working-directory: ${{ github.workspace }}
+  #       run: |
+  #         test -f databricks.yml
+  #         echo "Bundle file found: $PWD/databricks.yml"
 
-      - name: Validate dev bundle
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+  #     - name: Validate dev bundle
+  #       working-directory: ${{ github.workspace }}
+  #       run: databricks bundle validate -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      - name: Destroy dev bundle resources
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle destroy -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
+  #     - name: Destroy dev bundle resources
+  #       working-directory: ${{ github.workspace }}
+  #       run: databricks bundle destroy -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve

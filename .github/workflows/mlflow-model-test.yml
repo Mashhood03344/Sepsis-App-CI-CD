@@ -156,7 +156,7 @@ jobs:
             --model-name "clinical_dev.sepsis.sepsis_supervisor_mlflow_poc"
 
       - name: Validate Databricks bundle
-        if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
+        # if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -169,7 +169,7 @@ jobs:
 
       
       - name: Plan Databricks bundle deployment
-        if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
+        # if: steps.changes.outputs.bundle_changed == 'true' || steps.changes.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
