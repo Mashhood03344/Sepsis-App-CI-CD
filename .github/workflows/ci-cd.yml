@@ -54,13 +54,14 @@ jobs:
           test -f databricks.yml
           echo "Bundle file found: $PWD/databricks.yml"
 
+      - name: Validate target bundle configuration
+        working-directory: ${{ github.workspace }}
+        run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+
       - name: Plan target bundle deployment
         working-directory: ${{ github.workspace }}
         run: databricks bundle plan -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      - name: Validate target bundle configuration
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
   # deploy:
   #   name: Deploy ${{ github.ref_name }} environment
