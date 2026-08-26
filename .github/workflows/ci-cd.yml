@@ -124,6 +124,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
   #   environment: ${{ github.ref_name }}
+    environment: dev
     env:
       BUNDLE_TARGET: dev
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
