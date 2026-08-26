@@ -124,13 +124,14 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
   #   environment: ${{ github.ref_name }}
-    environment: dev
     env:
+      BUNDLE_TARGET: dev
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
       DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+      ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -171,9 +172,6 @@ jobs:
         id: log-model
         env:
           PYTHONPATH: ${{ github.workspace }}/src
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           python -u model/log_model.py
 
@@ -192,9 +190,6 @@ jobs:
       - name: Validate packaged MLflow model
         if: needs.validate.outputs.model_changed == 'true'
         env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           MODEL_URI: ${{ steps.log-model.outputs.model_uri }}
         run: |
           set -euo pipefail
@@ -230,10 +225,6 @@ jobs:
 
       - name: Register MLflow model in Unity Catalog
         if: needs.validate.outputs.model_changed == 'true'
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           python -u model/register_model.py \
             --model-uri "${{ steps.log-model.outputs.model_uri }}" \
@@ -248,11 +239,6 @@ jobs:
       - name: Validate Databricks bundle
         if: needs.validate.outputs.bundle_changed == 'true' || needs.validate.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
         run: |
           databricks bundle validate -t dev \
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
@@ -261,56 +247,45 @@ jobs:
       - name: Plan Databricks bundle deployment
         if: needs.validate.outputs.bundle_changed == 'true' || needs.validate.outputs.deploy_requested == 'true'
         working-directory: ${{ github.workspace }}
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
         run: |
           databricks bundle plan -t dev \
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
 
-      # - name: Bootstrap certified Q&A table
-      #   working-directory: ${{ github.workspace }}
-      #   run: |
-      #     # if [ "${{ github.ref_name }}" = "dev" ]; then
-      #     if [ "${BUNDLE_TARGET}" = "dev" ]; then
-      #       CATALOG="clinical_dev"
-      #     else
-      #       CATALOG="clinical_qa"
-      #     fi
+      - name: Bootstrap certified Q&A table
+        working-directory: ${{ github.workspace }}
+        run: |
+          # if [ "${{ github.ref_name }}" = "dev" ]; then
+          if [ "${BUNDLE_TARGET}" = "dev" ]; then
+            CATALOG="clinical_dev"
+          # else
+          #   CATALOG="clinical_qa"
+          fi
 
-      #     execute_sql() {
-      #       SQL="$1"
-      #       PAYLOAD=$(jq -n \
-      #         --arg statement "$SQL" \
-      #         --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
-      #         '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
+          execute_sql() {
+            SQL="$1"
+            PAYLOAD=$(jq -n \
+              --arg statement "$SQL" \
+              --arg warehouse_id "$DATABRICKS_WAREHOUSE_ID" \
+              '{statement: $statement, warehouse_id: $warehouse_id, wait_timeout: "50s"}')
 
-      #       RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
-      #       echo "$RESULT" | jq .
-      #       STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
+            RESULT=$(databricks api post /api/2.0/sql/statements --json "$PAYLOAD")
+            echo "$RESULT" | jq .
+            STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
 
-      #       if [ "$STATE" != "SUCCEEDED" ]; then
-      #         exit 1
-      #       fi
-      #     }
+            if [ "$STATE" != "SUCCEEDED" ]; then
+              exit 1
+            fi
+          }
 
-      #     TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
-      #     execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
-      #     execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+          TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
+          execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+          execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
 
       - name: Deploy Databricks bundle
         if: >
           needs.validate.outputs.deploy_requested == 'true' &&
           contains(github.event.head_commit.message, '[deploy-serving]')
         working-directory: ${{ github.workspace }}
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
         run: |
           set -euo pipefail
 
@@ -389,6 +364,9 @@ jobs:
           wait "${DEPLOY_PID}"
 
       - name: Run deployment evaluation
+        if: >
+          needs.validate.outputs.deploy_requested == 'true' &&
+          contains(github.event.head_commit.message, '[deploy-serving]')
         working-directory: ${{ github.workspace }}
         run: |
           # databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
@@ -398,11 +376,6 @@ jobs:
         if: >
           needs.validate.outputs.deploy_requested == 'true' &&
           contains(github.event.head_commit.message, '[deploy-serving]')
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          ENDPOINT_NAME: dev_sp_github_actions_dab_dev_sepsis-supervisor-mlflow-poc-dev
         run: |
           set -euo pipefail
 
