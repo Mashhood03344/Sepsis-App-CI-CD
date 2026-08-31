@@ -435,6 +435,13 @@ jobs:
             STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
 
             if [ "$STATE" != "SUCCEEDED" ]; then
+              echo "SQL statement failed."
+              echo "$RESULT" | jq -r '
+                .status.error.message //
+                .status.error //
+                .message //
+                "No detailed SQL error returned"
+              '
               exit 1
             fi
           }
@@ -527,6 +534,30 @@ jobs:
 
           wait "${DEPLOY_PID}"
 
+      - name: Resolve deployed serving endpoint
+        id: deployed-endpoint
+        shell: bash
+        env:
+          LOGICAL_ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_ENDPOINT_NAME="$(
+            databricks serving-endpoints list --output json |
+            jq -r \
+              --arg logical "${LOGICAL_ENDPOINT_NAME}" \
+              '.[] | select(.name | endswith($logical)) | .name' |
+            head -n 1
+          )"
+
+          if [[ -z "${ACTUAL_ENDPOINT_NAME}" ]]; then
+            echo "Unable to resolve deployed endpoint for ${LOGICAL_ENDPOINT_NAME}"
+            exit 1
+          fi
+
+          echo "Resolved endpoint: ${ACTUAL_ENDPOINT_NAME}"
+          echo "endpoint_name=${ACTUAL_ENDPOINT_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Run deployment evaluation
         working-directory: ${{ github.workspace }}
         env:
@@ -540,7 +571,7 @@ jobs:
 
       - name: Smoke test model serving endpoint
         env:
-          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          ENDPOINT_NAME: ${{ steps.deployed-endpoint.outputs.endpoint_name }}
         run: |
           set -euo pipefail
 
