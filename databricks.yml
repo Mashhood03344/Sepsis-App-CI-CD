@@ -3,29 +3,14 @@ bundle:
   engine: direct
 
 include:
+  - variables.yml
   - resources/apps/*.yml
   - resources/vector-search/*.yml
   - resources/genie/*.yml
+  - resources/model-serving/*.yml
   - jobs/*.yml
 
-variables:
-  catalog:
-    description: Unity Catalog catalog
-
-  schema:
-    description: Unity Catalog schema
-
-  warehouse_id:
-    description: SQL warehouse used by Genie
-
-  app_name:
-    description: Sepsis Databricks App name
-
-  genie_space_file:
-    description: Environment-specific Genie space definition
-
 targets:
-
   dev:
     mode: development
     default: true
@@ -33,22 +18,8 @@ targets:
     workspace:
       root_path: /Users/${workspace.current_user.userName}/dev/sepsis-supervisor/.bundle/${bundle.name}
 
-    variables:
-      catalog: clinical_dev
-      schema: sepsis
-      warehouse_id: ${var.warehouse_id}
-      app_name: stable-gated-sepsis-agent-dev
-      genie_space_file: ./sepsis.geniespace.json
-
   qa:
     mode: production
 
     workspace:
       root_path: /Shared/qa/sepsis-supervisor/.bundle/${bundle.name}
-
-    variables:
-      catalog: clinical_qa
-      schema: sepsis
-      warehouse_id: ${var.warehouse_id}
-      app_name: stable-gated-sepsis-agent-qa
-      genie_space_file: ./sepsis.geniespace.qa.json
