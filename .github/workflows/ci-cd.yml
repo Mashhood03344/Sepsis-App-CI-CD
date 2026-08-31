@@ -219,7 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.base_ref || github.ref_name }}
     env:
-      environment: ${{ github.base_ref || github.ref_name }}
+      BUNDLE_TARGET: ${{ github.base_ref || github.ref_name }}
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
