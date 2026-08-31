@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import mlflow
 
@@ -18,10 +19,7 @@ def main():
     print(f"Registering model URI: {args.model_uri}")
     print(f"Target UC model: {args.model_name}")
 
-    # The logged model lives in Databricks MLflow tracking.
     mlflow.set_tracking_uri("databricks")
-
-    # The registered model lives in Unity Catalog.
     mlflow.set_registry_uri("databricks-uc")
 
     model_version = mlflow.register_model(
@@ -31,6 +29,12 @@ def main():
 
     print(f"Registered model: {model_version.name}")
     print(f"Registered version: {model_version.version}")
+
+    github_output = os.getenv("GITHUB_OUTPUT")
+
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as output:
+            output.write(f"model_version={model_version.version}\n")
 
 
 if __name__ == "__main__":

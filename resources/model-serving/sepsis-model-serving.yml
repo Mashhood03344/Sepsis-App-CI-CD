@@ -1,14 +1,12 @@
-# This file is used to configure the model serving endpoints for the sepsis model.
-
 resources:
   model_serving_endpoints:
     sepsis_supervisor_endpoint:
-      name: sepsis-supervisor-mlflow-poc-dev
+      name: ${var.model_serving_endpoint_name}
 
       config:
         served_entities:
-          - name: sepsis-supervisor-v10
-            entity_name: clinical_dev.sepsis.sepsis_supervisor_mlflow_poc
-            entity_version: "10"
+          - name: sepsis-supervisor-${bundle.target}
+            entity_name: ${var.model_name}
+            entity_version: ${var.model_version}
             workload_size: Small
             scale_to_zero_enabled: true
