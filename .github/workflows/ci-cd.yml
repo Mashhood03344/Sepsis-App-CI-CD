@@ -3,8 +3,11 @@ name: Sepsis Supervisor CI/CD
 on:
   pull_request:
     branches: [dev, qa]
+    types: [opened, synchronize, reopened]
+
   push:
     branches: [dev, qa]
+
   workflow_dispatch:
     inputs:
       confirm:
@@ -15,6 +18,10 @@ on:
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: sepsis-${{ github.base_ref || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -199,13 +206,20 @@ jobs:
 
 
   deploy:
-    name: Deploy ${{ github.ref_name }} environment
-    if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'qa')
+    name: Deploy ${{ github.base_ref || github.ref_name }} environment
+    if: >
+      (github.event_name == 'push' &&
+      (github.ref_name == 'dev' || github.ref_name == 'qa')) ||
+      (github.event_name == 'pull_request' &&
+      github.base_ref == 'dev' &&
+      (github.event.action == 'opened' ||
+        github.event.action == 'synchronize' ||
+        github.event.action == 'reopened'))
     needs: validate
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name }}
+    environment: ${{ github.base_ref || github.ref_name }}
     env:
-      BUNDLE_TARGET: ${{ github.ref_name }}
+      environment: ${{ github.base_ref || github.ref_name }}
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
