@@ -1,0 +1,26 @@
+resources:
+
+  jobs:
+
+    sepsis_infrastructure:
+
+      name: "[${bundle.target}] Sepsis Supervisor Infrastructure"
+
+      tasks:
+
+        - task_key: provision_infrastructure
+
+          notebook_task:
+            notebook_path: ../notebooks/infrastructure.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+
+          environment_key: default
+
+      environments:
+
+        - environment_key: default
+
+          spec:
+            environment_version: "4"

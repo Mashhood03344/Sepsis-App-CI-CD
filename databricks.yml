@@ -1,0 +1,30 @@
+bundle:
+  name: sepsis-supervisor
+  engine: direct
+
+include:
+  - variables.yml
+  - resources/apps/*.yml
+  - resources/vector-search/*.yml
+  - resources/genie/*.yml
+  - resources/model-serving/*.yml
+  - jobs/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/dev/sepsis-supervisor/.bundle/${bundle.name}
+
+  qa:
+    mode: production
+
+    workspace:
+      root_path: /Shared/qa/sepsis-supervisor/.bundle/${bundle.name}
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Shared/prod/sepsis-supervisor/.bundle/${bundle.name}
