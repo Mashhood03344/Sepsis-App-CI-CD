@@ -3,8 +3,11 @@ name: Sepsis Supervisor CI/CD
 on:
   pull_request:
     branches: [dev, qa]
+    types: [opened, synchronize, reopened]
+
   push:
     branches: [dev, qa]
+
   workflow_dispatch:
     inputs:
       confirm:
@@ -16,9 +19,207 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: sepsis-${{ github.base_ref || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   validate:
-    name: Validate and test
+    name: Detect Changed areas
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref || github.ref_name }}
+
+    outputs:
+      model_changed: ${{ steps.changes.outputs.model_changed }}
+      bundle_changed: ${{ steps.changes.outputs.bundle_changed }}
+
+
+    env:
+      BUNDLE_TARGET: ${{ github.base_ref || github.ref_name }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: changes
+        shell: bash
+        run: |
+          echo "Head commit message:"
+          echo '${{ github.event.head_commit.message }}'
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              git diff --name-only \
+                "${{ github.event.pull_request.base.sha }}" \
+                "${{ github.event.pull_request.head.sha }}" \
+                > changed_files.txt
+          else
+              git diff --name-only \
+                "${{ github.event.before }}" \
+                "${{ github.sha }}" \
+                > changed_files.txt
+          fi
+
+          echo "Changed files:"
+          cat changed_files.txt
+
+          if grep -Eq '^(model/|src/sepsis/)' changed_files.txt; then
+            echo "model_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "model_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq \
+          '^(resources/|jobs/|databricks.yml|variables.yml)' \
+          changed_files.txt; then
+            echo "bundle_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bundle_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show Python version
+        run: python --version
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
+
+      - name: Install application and model dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r apps/sepsis-supervisor/requirements.txt
+          python -m pip install -r model/requirements.txt
+
+      - name: Install YAML parser
+        run: python -m pip install pyyaml
+
+      - name: Verify Databricks authentication
+        run: databricks current-user me
+
+      - name: Resolve model serving configuration
+        id: model-config
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import yaml
+
+          target = os.environ["BUNDLE_TARGET"]
+
+          with open("variables.yml", "r", encoding="utf-8") as f:
+              config = yaml.safe_load(f)
+
+          variables = config["targets"][target]["variables"]
+
+          print(
+              f"endpoint_name="
+              f"{variables['model_serving_endpoint_name']}"
+          )
+          print(
+              f"model_name="
+              f"{variables['model_name']}"
+          )
+          PY
+
+      - name: Resolve model version for validation
+        id: model-version
+        shell: bash
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+        run: |
+          set -euo pipefail
+
+          MODEL_VERSION="$(
+            python - <<'PY'
+          import os
+          import mlflow
+          from mlflow import MlflowClient
+
+          mlflow.set_registry_uri("databricks-uc")
+
+          model_name = os.environ["MODEL_NAME"]
+          target = os.environ["BUNDLE_TARGET"]
+
+          client = MlflowClient()
+
+          versions = client.search_model_versions(
+              f"name='{model_name}'"
+          )
+
+          if not versions:
+              if target == "qa":
+                  print("1")
+              else:
+                  raise RuntimeError(
+                      f"No registered versions found for {model_name}"
+                  )
+          else:
+              latest = max(
+                  versions,
+                  key=lambda version: int(version.version)
+              )
+              print(latest.version)
+          PY
+          )"
+
+          echo "Model version used for validation: ${MODEL_VERSION}"
+          echo "model_version=${MODEL_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
+      - name: Validate Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          databricks bundle validate \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
+
+      - name: Plan Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          echo "Planning with model version: ${MODEL_VERSION}"
+
+          databricks bundle plan \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
+
+
+  deploy:
+    name: Deploy ${{ github.base_ref || github.ref_name }} environment
+    if: >
+      (github.event_name == 'push' &&
+      (github.ref_name == 'dev' || github.ref_name == 'qa')) ||
+      (github.event_name == 'pull_request' &&
+      github.base_ref == 'dev' &&
+      (github.event.action == 'opened' ||
+        github.event.action == 'synchronize' ||
+        github.event.action == 'reopened'))
+    needs: validate
     runs-on: ubuntu-latest
     environment: ${{ github.base_ref || github.ref_name }}
     env:
@@ -35,63 +236,209 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install application dependencies
-        run: python -m pip install --upgrade pip && pip install -r apps/sepsis-supervisor/requirements.txt
+      - name: Show Python version
+        run: python --version
 
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+      - name: Install YAML parser
+        run: python -m pip install pyyaml
+
+      - name: Resolve model serving configuration
+        id: model-config
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import yaml
+
+          target = os.environ["BUNDLE_TARGET"]
+
+          with open("variables.yml", "r", encoding="utf-8") as f:
+              config = yaml.safe_load(f)
+
+          variables = config["targets"][target]["variables"]
+
+          print(
+              f"endpoint_name="
+              f"{variables['model_serving_endpoint_name']}"
+          )
+          print(
+              f"model_name="
+              f"{variables['model_name']}"
+          )
+          PY
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
 
+      - name: Install application and model dependencies
+        run: |
+            python -m pip install --upgrade pip
+            python -m pip install -r apps/sepsis-supervisor/requirements.txt
+            python -m pip install -r model/requirements.txt
+
+      - name: Show MLflow environment
+        run: |
+          python -m pip show mlflow
+          python -c "import mlflow; print(f'MLflow version: {mlflow.__version__}')"
+
+      - name: Validate MLflow model import
+        if: needs.validate.outputs.model_changed == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
+      
+      - name: Log and validate MLflow model
+        if: needs.validate.outputs.model_changed == 'true'
+        id: log-model
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python -u model/log_model.py
+
+      - name: Verify logged model URI
+        if: needs.validate.outputs.model_changed == 'true'
+        run: |
+          MODEL_URI="${{ steps.log-model.outputs.model_uri }}"
+
+          echo "Model URI from logging step: ${MODEL_URI}"
+
+          if [[ -z "${MODEL_URI}" ]]; then
+            echo "ERROR: log-model did not export model_uri"
+            exit 1
+          fi
+
+      - name: Validate packaged MLflow model
+        if: needs.validate.outputs.model_changed == 'true'
+        env:
+          MODEL_URI: ${{ steps.log-model.outputs.model_uri }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MODEL_URI}" ]]; then
+            echo "ERROR: MODEL_URI is empty"
+            exit 1
+          fi
+
+          echo "Loading packaged model without repository PYTHONPATH: ${MODEL_URI}"
+
+          env -u PYTHONPATH MODEL_URI="${MODEL_URI}" python - <<'PY'
+          import os
+          import mlflow
+
+          mlflow.set_tracking_uri("databricks")
+
+          model_uri = os.environ["MODEL_URI"]
+          print(f"Loading model: {model_uri}")
+
+          model = mlflow.pyfunc.load_model(model_uri)
+
+          result = model.predict([
+              {"question": "Show a certified sepsis answer"}
+          ])
+
+          print(f"Packaged model result: {result}")
+
+          assert result[0]["route"] == "CERTIFIED_QA"
+
+          print("Packaged MLflow model validation successful")
+          PY
+
+      - name: Register MLflow model in Unity Catalog
+        if: needs.validate.outputs.model_changed == 'true'
+        id: register-model
+        run: |
+          python -u model/register_model.py \
+            --model-uri "${{ steps.log-model.outputs.model_uri }}" \
+            --model-name "${{ steps.model-config.outputs.model_name }}"
+
+      - name: Resolve model version
+        id: model-version
+        shell: bash
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+          REGISTERED_VERSION: ${{ steps.register-model.outputs.model_version }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${REGISTERED_VERSION}" ]]; then
+            echo "model_version=${REGISTERED_VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MODEL_VERSION="$(
+            python - <<'PY'
+          import os
+          import mlflow
+          from mlflow import MlflowClient
+
+          mlflow.set_registry_uri("databricks-uc")
+
+          model_name = os.environ["MODEL_NAME"]
+
+          client = MlflowClient()
+          versions = client.search_model_versions(
+              f"name='{model_name}'"
+          )
+
+          if not versions:
+              raise RuntimeError(
+                  f"No registered versions found for {model_name}"
+              )
+
+          latest = max(
+              versions,
+              key=lambda v: int(v.version)
+          )
+
+          print(latest.version)
+          PY
+          )"
+
+          echo "model_version=${MODEL_VERSION}" >> "$GITHUB_OUTPUT"
+              
       - name: Verify Databricks bundle file
         working-directory: ${{ github.workspace }}
         run: |
           test -f databricks.yml
           echo "Bundle file found: $PWD/databricks.yml"
 
-      - name: Validate target bundle configuration
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t ${{ env.BUNDLE_TARGET }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
-
-  deploy:
-    name: Deploy ${{ github.ref_name }} environment
-    if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'qa')
-    needs: validate
-    runs-on: ubuntu-latest
-    environment: ${{ github.ref_name }}
-    env:
-      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-      DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@main
-
-      - name: Verify Databricks bundle file
+      - name: Validate Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
         working-directory: ${{ github.workspace }}
         run: |
-          test -f databricks.yml
-          echo "Bundle file found: $PWD/databricks.yml"
+          databricks bundle validate \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
 
-      - name: Validate target bundle
+      
+      - name: Plan Databricks bundle deployment
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
         working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+        run: |
+          databricks bundle plan \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
 
       - name: Bootstrap certified Q&A table
         working-directory: ${{ github.workspace }}
         run: |
-          if [ "${{ github.ref_name }}" = "dev" ]; then
+
+          if [ "${BUNDLE_TARGET}" = "dev" ]; then
             CATALOG="clinical_dev"
-          else
+          elif [ "${BUNDLE_TARGET}" = "qa" ]; then
             CATALOG="clinical_qa"
+          else
+            echo "Unsupported BUNDLE_TARGET: ${BUNDLE_TARGET}"
+            exit 1
           fi
 
           execute_sql() {
@@ -106,6 +453,13 @@ jobs:
             STATE=$(echo "$RESULT" | jq -r '.status.state // empty')
 
             if [ "$STATE" != "SUCCEEDED" ]; then
+              echo "SQL statement failed."
+              echo "$RESULT" | jq -r '
+                .status.error.message //
+                .status.error //
+                .message //
+                "No detailed SQL error returned"
+              '
               exit 1
             fi
           }
@@ -114,31 +468,248 @@ jobs:
           execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
           execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
 
-      - name: Deploy Databricks resources
+      - name: Deploy Databricks bundle
         working-directory: ${{ github.workspace }}
-        run: databricks bundle deploy -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
+        env:
+          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          set -euo pipefail
+
+          databricks bundle deploy \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}" &
+
+          DEPLOY_PID=$!
+
+          echo "Bundle deploy started with PID ${DEPLOY_PID}"
+
+          UPDATE_STARTED=false
+
+          while kill -0 "${DEPLOY_PID}" 2>/dev/null; do
+
+            ENDPOINT_JSON="$(
+              databricks serving-endpoints get "${ENDPOINT_NAME}" \
+                --output json 2>/dev/null || true
+            )"
+
+            if [[ -z "${ENDPOINT_JSON}" ]]; then
+              echo "Endpoint state is not available yet."
+              sleep 30
+              continue
+            fi
+
+            CONFIG_UPDATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.config_update // "UNKNOWN"'
+            )"
+
+            READY_STATE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.state.ready // "UNKNOWN"'
+            )"
+
+            ENTITY_DEPLOYMENT="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment // "UNKNOWN"'
+            )"
+
+            ENTITY_MESSAGE="$(
+              echo "${ENDPOINT_JSON}" |
+              jq -r '.pending_config.served_entities[0].state.deployment_state_message // ""'
+            )"
+
+            echo "Endpoint state:"
+            echo "  config_update=${CONFIG_UPDATE}"
+            echo "  ready=${READY_STATE}"
+            echo "  entity_deployment=${ENTITY_DEPLOYMENT}"
+
+            # Ignore the endpoint's previous failed state until
+            # Databricks confirms that this deployment has started.
+            if [[ "${CONFIG_UPDATE}" == "IN_PROGRESS" ]]; then
+              UPDATE_STARTED=true
+              echo "New endpoint update detected."
+            fi
+
+            # Only treat UPDATE_FAILED as belonging to this deployment
+            # after we have observed IN_PROGRESS.
+            if [[ "${UPDATE_STARTED}" == "true" ]] && \
+               { [[ "${CONFIG_UPDATE}" == "UPDATE_FAILED" ]] || \
+                 [[ "${ENTITY_DEPLOYMENT}" == "DEPLOYMENT_FAILED" ]]; }; then
+
+              echo "Model Serving deployment failed."
+              echo "Failure reason: ${ENTITY_MESSAGE}"
+
+              kill "${DEPLOY_PID}" 2>/dev/null || true
+              wait "${DEPLOY_PID}" 2>/dev/null || true
+
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          wait "${DEPLOY_PID}"
+
+      - name: Resolve deployed serving endpoint
+        id: deployed-endpoint
+        shell: bash
+        env:
+          LOGICAL_ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_ENDPOINT_NAME="$(
+            databricks serving-endpoints list --output json |
+            jq -r \
+              --arg logical "${LOGICAL_ENDPOINT_NAME}" \
+              '.[] | select(.name | endswith($logical)) | .name' |
+            head -n 1
+          )"
+
+          if [[ -z "${ACTUAL_ENDPOINT_NAME}" ]]; then
+            echo "Unable to resolve deployed endpoint for ${LOGICAL_ENDPOINT_NAME}"
+            exit 1
+          fi
+
+          echo "Resolved endpoint: ${ACTUAL_ENDPOINT_NAME}"
+          echo "endpoint_name=${ACTUAL_ENDPOINT_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Run deployment evaluation
         working-directory: ${{ github.workspace }}
-        run: databricks bundle run -t ${{ github.ref_name }} --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" sepsis_evaluation
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          databricks bundle run \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}" \
+            sepsis_evaluation
+
+      - name: Smoke test model serving endpoint
+        env:
+          ENDPOINT_NAME: ${{ steps.deployed-endpoint.outputs.endpoint_name }}
+        run: |
+          set -euo pipefail
+
+          echo "Testing CERTIFIED_QA route"
+
+          CERTIFIED_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show a certified sepsis answer"
+                  }
+                ]
+              }'
+          )"
+
+          echo "${CERTIFIED_RESPONSE}"
+
+          CERTIFIED_ROUTE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
+
+          CERTIFIED_CONFIDENCE="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
+
+          CERTIFIED_ANSWER="$(
+            echo "${CERTIFIED_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
+
+          if [[ "${CERTIFIED_ROUTE}" != "CERTIFIED_QA" ]]; then
+            echo "Expected CERTIFIED_QA but received ${CERTIFIED_ROUTE}"
+            exit 1
+          fi
+
+          if [[ -z "${CERTIFIED_CONFIDENCE}" || "${CERTIFIED_CONFIDENCE}" == "null" ]]; then
+            echo "Certified response is missing confidence"
+            exit 1
+          fi
+
+          if [[ -z "${CERTIFIED_ANSWER}" || "${CERTIFIED_ANSWER}" == "null" ]]; then
+            echo "Certified response is missing answer"
+            exit 1
+          fi
+
+          echo "CERTIFIED_QA route passed"
+
+          echo "Testing GENIE route"
+
+          GENIE_RESPONSE="$(
+            databricks serving-endpoints query "${ENDPOINT_NAME}" \
+              --json '{
+                "inputs": [
+                  {
+                    "question": "Show the latest sepsis trend"
+                  }
+                ]
+              }'
+          )"
+
+          echo "${GENIE_RESPONSE}"
+
+          GENIE_ROUTE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].route'
+          )"
+
+          GENIE_CONFIDENCE="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].confidence'
+          )"
+
+          GENIE_ANSWER="$(
+            echo "${GENIE_RESPONSE}" |
+            jq -r '.predictions[0].answer'
+          )"
+
+          if [[ "${GENIE_ROUTE}" != "GENIE" ]]; then
+            echo "Expected GENIE but received ${GENIE_ROUTE}"
+            exit 1
+          fi
+
+          if [[ -z "${GENIE_CONFIDENCE}" || "${GENIE_CONFIDENCE}" == "null" ]]; then
+            echo "GENIE response is missing confidence"
+            exit 1
+          fi
+
+          if [[ -z "${GENIE_ANSWER}" || "${GENIE_ANSWER}" == "null" ]]; then
+            echo "GENIE response is missing answer"
+            exit 1
+          fi
+
+          echo "GENIE route passed"
+          echo "Model serving smoke tests passed"
 
   destroy-dev:
     name: Destroy dev environment
     if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'DESTROY_DEV'
     runs-on: ubuntu-latest
     environment: dev
+
     env:
+      BUNDLE_TARGET: dev
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
       DATABRICKS_BUNDLE_ROOT: ${{ github.workspace }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.11.0
 
       - name: Verify Databricks bundle file
         working-directory: ${{ github.workspace }}
@@ -147,9 +718,17 @@ jobs:
           echo "Bundle file found: $PWD/databricks.yml"
 
       - name: Validate dev bundle
-        working-directory: ${{ github.workspace }}
-        run: databricks bundle validate -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}"
+        run: |
+          databricks bundle validate \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=1"
 
       - name: Destroy dev bundle resources
         working-directory: ${{ github.workspace }}
-        run: databricks bundle destroy -t dev --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" --auto-approve
+        run: |
+          databricks bundle destroy \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=1" \
+            --auto-approve
