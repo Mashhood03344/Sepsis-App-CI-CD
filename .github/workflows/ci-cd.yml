@@ -2,11 +2,11 @@ name: Sepsis Supervisor CI/CD
 
 on:
   pull_request:
-    branches: [dev, qa]
+    branches: [dev, qa, main]
     types: [opened, synchronize, reopened]
 
   push:
-    branches: [dev, qa]
+    branches: [dev, qa, main]
 
   workflow_dispatch:
     inputs:
@@ -28,7 +28,7 @@ jobs:
     name: Detect Changed areas
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: ${{ github.base_ref || github.ref_name }}
+    environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }}
 
     outputs:
       model_changed: ${{ steps.changes.outputs.model_changed }}
@@ -36,7 +36,7 @@ jobs:
 
 
     env:
-      BUNDLE_TARGET: ${{ github.base_ref || github.ref_name }}
+      BUNDLE_TARGET: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }}
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -152,7 +152,6 @@ jobs:
           mlflow.set_registry_uri("databricks-uc")
 
           model_name = os.environ["MODEL_NAME"]
-          target = os.environ["BUNDLE_TARGET"]
 
           client = MlflowClient()
 
@@ -205,10 +204,12 @@ jobs:
 
 
   deploy:
-    name: Deploy ${{ github.base_ref || github.ref_name }} environment
+    name: Deploy ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }} environment
     if: >
       (github.event_name == 'push' &&
-      (github.ref_name == 'dev' || github.ref_name == 'qa')) ||
+      (github.ref_name == 'dev' ||
+        github.ref_name == 'qa' ||
+        github.ref_name == 'main')) ||
       (github.event_name == 'pull_request' &&
       github.base_ref == 'dev' &&
       (github.event.action == 'opened' ||
@@ -216,9 +217,9 @@ jobs:
         github.event.action == 'reopened'))
     needs: validate
     runs-on: ubuntu-latest
-    environment: ${{ github.base_ref || github.ref_name }}
+    environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }}
     env:
-      BUNDLE_TARGET: ${{ github.base_ref || github.ref_name }}
+      BUNDLE_TARGET: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }}
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -275,20 +276,54 @@ jobs:
             python -m pip install -r apps/sepsis-supervisor/requirements.txt
             python -m pip install -r model/requirements.txt
 
+      - name: Check registered model
+        id: model-state
+        shell: bash
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+        run: |
+          set -euo pipefail
+
+          MODEL_EXISTS="$(
+            python - <<'PY'
+          import os
+          import mlflow
+          from mlflow import MlflowClient
+
+          mlflow.set_registry_uri("databricks-uc")
+
+          model_name = os.environ["MODEL_NAME"]
+          client = MlflowClient()
+
+          versions = client.search_model_versions(
+              f"name='{model_name}'"
+          )
+
+          print("true" if versions else "false")
+          PY
+          )"
+
+          echo "Registered model exists: ${MODEL_EXISTS}"
+          echo "model_exists=${MODEL_EXISTS}" >> "$GITHUB_OUTPUT"
+
       - name: Show MLflow environment
         run: |
           python -m pip show mlflow
           python -c "import mlflow; print(f'MLflow version: {mlflow.__version__}')"
 
       - name: Validate MLflow model import
-        if: needs.validate.outputs.model_changed == 'true'
+        if: >
+          needs.validate.outputs.model_changed == 'true' ||
+          steps.model-state.outputs.model_exists == 'false'
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
           python -c "from sepsis.supervisor_model import SepsisSupervisorModel; print('SepsisSupervisorModel import successful')"
       
       - name: Log and validate MLflow model
-        if: needs.validate.outputs.model_changed == 'true'
+        if: >
+          needs.validate.outputs.model_changed == 'true' ||
+          steps.model-state.outputs.model_exists == 'false'
         id: log-model
         env:
           PYTHONPATH: ${{ github.workspace }}/src
@@ -296,7 +331,9 @@ jobs:
           python -u model/log_model.py
 
       - name: Verify logged model URI
-        if: needs.validate.outputs.model_changed == 'true'
+        if: >
+          needs.validate.outputs.model_changed == 'true' ||
+          steps.model-state.outputs.model_exists == 'false'
         run: |
           MODEL_URI="${{ steps.log-model.outputs.model_uri }}"
 
@@ -308,7 +345,9 @@ jobs:
           fi
 
       - name: Validate packaged MLflow model
-        if: needs.validate.outputs.model_changed == 'true'
+        if: >
+          needs.validate.outputs.model_changed == 'true' ||
+          steps.model-state.outputs.model_exists == 'false'
         env:
           MODEL_URI: ${{ steps.log-model.outputs.model_uri }}
         run: |
@@ -344,7 +383,9 @@ jobs:
           PY
 
       - name: Register MLflow model in Unity Catalog
-        if: needs.validate.outputs.model_changed == 'true'
+        if: >
+          needs.validate.outputs.model_changed == 'true' ||
+          steps.model-state.outputs.model_exists == 'false'
         id: register-model
         run: |
           python -u model/register_model.py \
@@ -395,33 +436,6 @@ jobs:
           )"
 
           echo "model_version=${MODEL_VERSION}" >> "$GITHUB_OUTPUT"
-              
-      - name: Verify Databricks bundle file
-        working-directory: ${{ github.workspace }}
-        run: |
-          test -f databricks.yml
-          echo "Bundle file found: $PWD/databricks.yml"
-
-      - name: Validate Databricks bundle
-        env:
-          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
-        working-directory: ${{ github.workspace }}
-        run: |
-          databricks bundle validate \
-            -t "${BUNDLE_TARGET}" \
-            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
-            --var="model_version=${MODEL_VERSION}"
-
-      
-      - name: Plan Databricks bundle deployment
-        env:
-          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
-        working-directory: ${{ github.workspace }}
-        run: |
-          databricks bundle plan \
-            -t "${BUNDLE_TARGET}" \
-            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
-            --var="model_version=${MODEL_VERSION}"
 
       - name: Bootstrap certified Q&A table
         working-directory: ${{ github.workspace }}
@@ -431,6 +445,8 @@ jobs:
             CATALOG="clinical_dev"
           elif [ "${BUNDLE_TARGET}" = "qa" ]; then
             CATALOG="clinical_qa"
+          elif [ "${BUNDLE_TARGET}" = "prod" ]; then
+            CATALOG="clinical_prod"
           else
             echo "Unsupported BUNDLE_TARGET: ${BUNDLE_TARGET}"
             exit 1
@@ -460,8 +476,35 @@ jobs:
           }
 
           TABLE="\`${CATALOG}\`.\`sepsis\`.\`sepsis_certified_qa\`"
+
           execute_sql "CREATE TABLE IF NOT EXISTS ${TABLE} (id STRING, question STRING, approved_answer STRING) USING DELTA TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
           execute_sql "ALTER TABLE ${TABLE} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
+
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
+      - name: Validate Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          databricks bundle validate \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
+
+      - name: Plan Databricks bundle deployment
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          databricks bundle plan \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
 
       - name: Deploy Databricks bundle
         working-directory: ${{ github.workspace }}
