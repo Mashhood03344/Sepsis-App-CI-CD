@@ -152,6 +152,7 @@ jobs:
           mlflow.set_registry_uri("databricks-uc")
 
           model_name = os.environ["MODEL_NAME"]
+          target = os.environ["BUNDLE_TARGET"]
 
           client = MlflowClient()
 
