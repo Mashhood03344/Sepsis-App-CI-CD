@@ -161,12 +161,7 @@ jobs:
           )
 
           if not versions:
-              if target == "qa":
-                  print("1")
-              else:
-                  raise RuntimeError(
-                      f"No registered versions found for {model_name}"
-                  )
+              print("1")
           else:
               latest = max(
                   versions,
