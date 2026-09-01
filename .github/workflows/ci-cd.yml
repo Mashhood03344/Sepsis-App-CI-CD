@@ -202,6 +202,26 @@ jobs:
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
             --var="model_version=${MODEL_VERSION}"
 
+      - name: Show validation context
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          echo "========================================"
+          echo "Validation and Plan context"
+          echo "========================================"
+          echo "Event:            ${{ github.event_name }}"
+          echo "Source branch:    ${{ github.head_ref || github.ref_name }}"
+          echo "Target branch:    ${{ github.base_ref || github.ref_name }}"
+          echo "Bundle target:    ${BUNDLE_TARGET}"
+          echo "Workspace host:   ${DATABRICKS_HOST}"
+          echo "Warehouse ID:     ${DATABRICKS_WAREHOUSE_ID}"
+          echo "Model name:       ${MODEL_NAME}"
+          echo "Model version:    ${MODEL_VERSION}"
+          echo "Serving endpoint: ${ENDPOINT_NAME}"
+          echo "========================================"
+
 
   deploy:
     name: Deploy ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }} environment
@@ -725,6 +745,31 @@ jobs:
 
           echo "GENIE route passed"
           echo "Model serving smoke tests passed"
+
+
+      - name: Show deployment context
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+          MODEL_EXISTS: ${{ steps.model-state.outputs.model_exists }}
+        run: |
+          echo "========================================"
+          echo "Deployment context"
+          echo "========================================"
+          echo "Event:            ${{ github.event_name }}"
+          echo "Branch:           ${{ github.ref_name }}"
+          echo "Bundle target:    ${BUNDLE_TARGET}"
+          echo "Workspace host:   ${DATABRICKS_HOST}"
+          echo "Warehouse ID:     ${DATABRICKS_WAREHOUSE_ID}"
+          echo "Model name:       ${MODEL_NAME}"
+          echo "Model exists:     ${MODEL_EXISTS}"
+          echo "Model version:    ${MODEL_VERSION}"
+          echo "Serving endpoint: ${ENDPOINT_NAME}"
+          echo "Model changed:    ${{ needs.validate.outputs.model_changed }}"
+          echo "Bundle changed:   ${{ needs.validate.outputs.bundle_changed }}"
+          echo "========================================"
+
 
   destroy-dev:
     name: Destroy dev environment
