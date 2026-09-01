@@ -23,3 +23,8 @@ targets:
 
     workspace:
       root_path: /Shared/qa/sepsis-supervisor/.bundle/${bundle.name}
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Shared/prod/sepsis-supervisor/.bundle/${bundle.name}
