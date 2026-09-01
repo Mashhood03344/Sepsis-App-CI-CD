@@ -201,9 +201,12 @@ jobs:
         env:
           MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
         run: |
+          echo "Planning with model version: ${MODEL_VERSION}"
+
           databricks bundle plan \
             -t "${BUNDLE_TARGET}" \
             --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
 
 
   deploy:
