@@ -50,4 +50,18 @@ targets:
 
       model_serving_endpoint_name: sepsis-supervisor-mlflow-poc-qa
       model_name: clinical_qa.sepsis.sepsis_supervisor_mlflow_poc
-      
+
+  prod:
+    variables:
+      catalog: clinical_prod
+      schema: sepsis
+
+      app_name: stable-gated-sepsis-agent-prod
+
+      genie_space_file: ./sepsis.geniespace.prod.json
+
+      vector_search_endpoint_name: sepsis_qna_vector_search_endpoint_prod_v3
+
+      model_serving_endpoint_name: sepsis-supervisor-mlflow-poc-prod
+
+      model_name: clinical_prod.sepsis.sepsis_supervisor_mlflow_poc
