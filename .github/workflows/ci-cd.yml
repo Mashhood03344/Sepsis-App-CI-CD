@@ -179,6 +179,32 @@ jobs:
           echo "Model version used for validation: ${MODEL_VERSION}"
           echo "model_version=${MODEL_VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify Databricks bundle file
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -f databricks.yml
+          echo "Bundle file found: $PWD/databricks.yml"
+
+      - name: Validate Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          databricks bundle validate \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+            --var="model_version=${MODEL_VERSION}"
+
+      - name: Plan Databricks bundle
+        env:
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          databricks bundle plan \
+            -t "${BUNDLE_TARGET}" \
+            --var="warehouse_id=${DATABRICKS_WAREHOUSE_ID}" \
+
 
   deploy:
     name: Deploy ${{ github.base_ref || github.ref_name }} environment
