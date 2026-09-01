@@ -14,6 +14,9 @@ variables:
   genie_space_file:
     description: Environment-specific Genie space definition
 
+  vector_search_endpoint_name:
+    description: Vector Search endpoint name
+
   model_serving_endpoint_name:
     description: Model Serving endpoint name
 
@@ -31,6 +34,8 @@ targets:
       app_name: stable-gated-sepsis-agent-dev
       genie_space_file: ./sepsis.geniespace.json
 
+      vector_search_endpoint_name: sepsis_qna_vector_search_endpoint_v3
+
       model_serving_endpoint_name: sepsis-supervisor-mlflow-poc-dev
       model_name: clinical_dev.sepsis.sepsis_supervisor_mlflow_poc
 
@@ -40,6 +45,8 @@ targets:
       schema: sepsis
       app_name: stable-gated-sepsis-agent-qa
       genie_space_file: ./sepsis.geniespace.qa.json
+
+      vector_search_endpoint_name: sepsis_qna_vector_search_endpoint_qa_v3
 
       model_serving_endpoint_name: sepsis-supervisor-mlflow-poc-qa
       model_name: clinical_qa.sepsis.sepsis_supervisor_mlflow_poc
