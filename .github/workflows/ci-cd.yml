@@ -222,6 +222,26 @@ jobs:
           echo "Serving endpoint: ${ENDPOINT_NAME}"
           echo "========================================"
 
+      - name: Write validation summary
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+        run: |
+          {
+            echo "## Validation and Plan Context"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Event | \`${{ github.event_name }}\` |"
+            echo "| Source branch | \`${{ github.head_ref || github.ref_name }}\` |"
+            echo "| Target branch | \`${{ github.base_ref || github.ref_name }}\` |"
+            echo "| Bundle target | \`${BUNDLE_TARGET}\` |"
+            echo "| Model | \`${MODEL_NAME}\` |"
+            echo "| Model version | \`${MODEL_VERSION}\` |"
+            echo "| Serving endpoint | \`${ENDPOINT_NAME}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
 
   deploy:
     name: Deploy ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || (github.base_ref || github.ref_name) }} environment
@@ -769,6 +789,47 @@ jobs:
           echo "Model changed:    ${{ needs.validate.outputs.model_changed }}"
           echo "Bundle changed:   ${{ needs.validate.outputs.bundle_changed }}"
           echo "========================================"
+
+
+      - name: Write deployment summary
+        env:
+          MODEL_NAME: ${{ steps.model-config.outputs.model_name }}
+          ENDPOINT_NAME: ${{ steps.model-config.outputs.endpoint_name }}
+          MODEL_VERSION: ${{ steps.model-version.outputs.model_version }}
+          MODEL_EXISTS: ${{ steps.model-state.outputs.model_exists }}
+        run: |
+          {
+            echo "## Deployment Context"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Event | \`${{ github.event_name }}\` |"
+            echo "| Branch | \`${{ github.head_ref || github.ref_name }}\` |"
+            echo "| Bundle target | \`${BUNDLE_TARGET}\` |"
+            echo "| Model | \`${MODEL_NAME}\` |"
+            echo "| Model exists | \`${MODEL_EXISTS}\` |"
+            echo "| Model version | \`${MODEL_VERSION}\` |"
+            echo "| Serving endpoint | \`${ENDPOINT_NAME}\` |"
+            echo "| Model changed | \`${{ needs.validate.outputs.model_changed }}\` |"
+            echo "| Bundle changed | \`${{ needs.validate.outputs.bundle_changed }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write deployment result
+        if: success()
+        env:
+          ENDPOINT_NAME: ${{ steps.deployed-endpoint.outputs.endpoint_name }}
+        run: |
+          {
+            echo ""
+            echo "## Deployment Result"
+            echo ""
+            echo "✅ Deployment completed successfully"
+            echo ""
+            echo "- Target: \`${BUNDLE_TARGET}\`"
+            echo "- Serving endpoint: \`${ENDPOINT_NAME}\`"
+            echo "- Evaluation: passed"
+            echo "- Smoke tests: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
   destroy-dev:
