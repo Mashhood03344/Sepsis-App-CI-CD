@@ -1,0 +1,15 @@
+resources:
+
+  apps:
+
+    sepsis_supervisor_app:
+
+      name: ${var.app_name}
+
+      description: >
+        Sepsis Supervisor Agent application.
+
+      source_code_path: ../../apps/sepsis-supervisor
+
+      lifecycle:
+        started: true

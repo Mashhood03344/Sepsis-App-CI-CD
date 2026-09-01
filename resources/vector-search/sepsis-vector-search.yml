@@ -1,0 +1,32 @@
+resources:
+
+  vector_search_endpoints:
+
+    sepsis_qna_vector_search_endpoint:
+
+      name: ${var.vector_search_endpoint_name}
+
+      endpoint_type: STANDARD
+
+
+  vector_search_indexes:
+
+    sepsis_certified_qa_index:
+
+      name: ${var.catalog}.${var.schema}.sepsis_certified_qa_index_v3
+
+      endpoint_name: ${resources.vector_search_endpoints.sepsis_qna_vector_search_endpoint.name}
+
+      primary_key: id
+
+      index_type: DELTA_SYNC
+
+      delta_sync_index_spec:
+
+        source_table: ${var.catalog}.${var.schema}.sepsis_certified_qa
+
+        pipeline_type: TRIGGERED
+
+        embedding_source_columns:
+          - name: question
+            embedding_model_endpoint_name: databricks-gte-large-en
